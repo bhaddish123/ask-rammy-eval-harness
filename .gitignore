@@ -1,0 +1,19 @@
+# Secrets -- never commit
+.env
+.env.*
+
+# HR client data and run outputs -- not published without the client's approval
+*.xlsx
+*.csv
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
