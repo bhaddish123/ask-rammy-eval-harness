@@ -2,9 +2,23 @@
 
 Automated benchmarking for **Ask Rammy**, West Chester University's HR chatbot. It is a retrieval-augmented generation (RAG) assistant that answers employee HR questions from WCU and PASSHE policy pages and documents.
 
-I built this as **Testing & Data Lead** on a 6-person CSC402 Software Engineering capstone team (Fall 2026). Our team is modernizing Ask Rammy from a single-model setup (GPT-4.1-mini) to a dual-model orchestrator/generator architecture. This harness measures the current baseline so the new setups can be compared against it.
+I built this as **Testing & Data Lead** on a 6-person CSC402 Software Engineering capstone team (Fall 2026).
 
-> **Attribution:** the Ask Rammy chatbot was built by a previous capstone team: [GarrettCrowner/CSC402-Project](https://github.com/GarrettCrowner/CSC402-Project). **This repo contains only my testing and benchmarking code.** None of the chatbot's code is included here.
+> **Attribution:** the original Ask Rammy chatbot was built by a previous capstone team: [GarrettCrowner/CSC402-Project](https://github.com/GarrettCrowner/CSC402-Project). **This repo contains only my testing and benchmarking code.** None of the chatbot's code is included here.
+
+## The project
+
+Our team is upgrading Ask Rammy, working with WCU's HR department as the client. Today the chatbot runs a single-model pipeline: retrieve the top 5 matching chunks from Qdrant, then generate an answer with GPT-4.1-mini. We're replacing it with a **dual-model architecture**: an *orchestrator* model that routes and prepares each request, and a *generator* model that writes the answer.
+
+We're comparing three setups:
+
+1. **Baseline:** the current GPT-4.1-mini pipeline
+2. **Local / Local:** local orchestrator + local generator
+3. **Local / Proprietary:** local orchestrator + GPT-4.1-mini generator
+
+The best-performing setup goes to production, with handoff documentation for HR and IT.
+
+**My role:** I own the evaluation that decides which setup ships. I built the HR-validated benchmark, deployed the isolated staging environment the team tests against, and wrote this harness. The harness measures every setup the same way, so the comparison is fair and can be reproduced.
 
 ## What the system under test looks like
 
