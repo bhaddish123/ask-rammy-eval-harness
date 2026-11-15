@@ -1,8 +1,43 @@
 # Ask Rammy Evaluation Harness
 
-This is an evaluation harness for Ask Rammy, West Chester University's RAG-based HR chatbot. It was built for the CSC402 capstone, where Bereket is Testing & Data Lead. It reads question-and-answer rows from an Excel workbook, sends each question to a running chatbot HTTP API, and records latency, request status, whether a guided flow started, and a word-overlap score against the approved answer.
+## Overview
 
-It does not host or modify the chatbot. This repository has no chatbot source, retrieval index, model configuration, or Docker setup. The scripts only call an API that is already running. They do not select a model. The chat client stores the `reply` field and does not record token usage or call `/api/analytics`.
+Ask Rammy is West Chester University's HR chatbot. It answers employee questions using retrieval-augmented generation (RAG) over WCU and PASSHE policy pages. I built this evaluation harness as **Testing & Data Lead** on a six-person CSC 402 Software Engineering capstone team (Fall 2026).
+
+Our team is evaluating whether local open-source LLMs can replace the current GPT-4.1-mini setup. This repository contains only the testing and benchmarking code, not the chatbot itself. The original chatbot was built by a previous capstone team: [GarrettCrowner/CSC402-Project](https://github.com/GarrettCrowner/CSC402-Project).
+
+## What it measures
+
+The harness sends each benchmark question through the live chatbot route (Node front end → Python/Flask API → Qdrant retrieval → the model under test, including local models served with Ollama in Docker) and logs:
+
+- the model's answer
+- retrieved sources
+- estimated correctness (see Limitations)
+- retrieval hit rate
+- source accuracy
+- token counts
+- response time
+
+The 178-question benchmark includes HR-approved Q&A plus out-of-scope, redirect-to-HR, and privacy/PII cases. Results are also added to the team's shared evaluation workbook so models can be compared side by side.
+
+## Results
+
+Accuracy figures below are **estimated**. Model answers were AI-graded against HR's approved answers; this is not official HR sign-off.
+
+| Model | Estimated accuracy | Notes |
+|---|---|---|
+| GPT-4.1-mini (baseline) | 65.2% | Current GPT setup used as the comparison point |
+| Gemma 2 9B (local, Ollama in Docker) | 62.9% | This evaluation; median response time ~80 s on a laptop CPU |
+| Qwen 2.5 3B (local) | 60.8% | Earlier team evaluation |
+| Llama 3.2 3B (local) | 49.4% | Original local model, earlier evaluation |
+
+Gemma 2 9B is close to the GPT-4.1-mini baseline and ahead of Qwen 2.5 3B. Speed, not estimated accuracy, is the main barrier to using the local 9B model in production.
+
+During the Gemma 2 9B run, repeated model crashes were diagnosed as out-of-memory failures and fixed by tuning Docker resources. That same issue likely caused the 48 errors in a teammate's earlier Gemma 2B run.
+
+## How it works
+
+A Python test harness (written with AI assistance) reads questions from the team's Excel benchmark, posts each one to the real chatbot API, and records the answer, retrieved sources, token counts, and timings. Using the live route — not a stripped-down model call — keeps results reproducible and comparable across models. The benchmark workbook and run outputs belong to WCU HR and are not included in this repository.
 
 ## Features
 
@@ -75,3 +110,9 @@ Request details in `test_benchmark.py`:
 `guided_flow_walkthrough.py` sends the same chat payload, appending `user` and `assistant` turns to `history`. When a reply matches `[OPTIONS: A | B | ...]`, it sends the first option as the next message. It stops at 6 bot turns (`MAX_TURNS`). It waits 0.3 seconds after each conversation.
 
 `guided_flow_transcripts.csv` columns: `row`, `category`, `question`, `expected_answer`, `final_reply`, `unresolved`, `num_turns`, `transcript`. `unresolved` is true when the turn cap is hit before a reply with no options. `num_turns` counts bot replies. `transcript` joins turns with ` || `.
+
+## Limitations
+
+- **Estimated scoring.** Correctness was AI-graded against HR-approved answers, not reviewed or signed off by HR. Treat the percentages as estimates.
+- **Latency.** Gemma 2 9B's median response time was about 80 seconds on a laptop CPU, which is too slow for production as tested.
+- **This repo does not include the chatbot, the policy documents, or the benchmark spreadsheet.**
