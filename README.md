@@ -28,7 +28,7 @@ Accuracy figures below are **estimated**. Model answers were AI-graded against H
 |---|---|---|
 | GPT-4.1-mini (baseline) | 65.2% | Current GPT setup used as the comparison point |
 | Gemma 2 9B (local, Ollama in Docker) | 62.9% | This evaluation; median response time ~80 s on a laptop CPU |
-| Qwen 2.5 3B (local) | 60.8% | Earlier team evaluation |
+| Qwen 2.5 3B (local) | 58.4% | Earlier team evaluation |
 | Llama 3.2 3B (local) | 49.4% | Original local model, earlier evaluation |
 
 Gemma 2 9B is close to the GPT-4.1-mini baseline and ahead of Qwen 2.5 3B. Speed, not estimated accuracy, is the main barrier to using the local 9B model in production.
