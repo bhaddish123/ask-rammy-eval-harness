@@ -66,6 +66,13 @@ Both runners call `http://localhost:3000`. That base URL is a constant in the so
 ├── guided_flow_walkthrough.py   # replay guided-flow rows as multi-turn chats; write guided_flow_transcripts.csv
 ├── xlsx_reader.py               # read sheet1 from an .xlsx file, including the shared-strings table
 ├── inspect_benchmark.py         # print the row count and the first 15 rows
+├── local_model_eval/            # local-model run (Gemma 2 9B via Ollama); see below
+│   ├── extract_questions.py     #   pull benchmark questions from the workbook, failed-before rows first
+│   ├── run_eval.py              #   run inside the chatbot's Python container; swaps the OpenAI client for Ollama
+│   ├── read_sheet.py            #   dump the workbook to JSON to compare with earlier runs
+│   ├── review_batch.py          #   show answer vs. approved answer vs. retrieved chunks for grading
+│   ├── save_scores.py           #   save grades to scores.json
+│   └── build_workbook.py        #   write results as new columns in a copy of the team workbook (needs openpyxl)
 ├── requirements.txt             # requests>=2.32.3
 ├── .gitignore                   # ignores .env, *.xlsx, *.csv, *.pdf, virtualenvs
 └── README.md
@@ -110,6 +117,18 @@ Request details in `test_benchmark.py`:
 `guided_flow_walkthrough.py` sends the same chat payload, appending `user` and `assistant` turns to `history`. When a reply matches `[OPTIONS: A | B | ...]`, it sends the first option as the next message. It stops at 6 bot turns (`MAX_TURNS`). It waits 0.3 seconds after each conversation.
 
 `guided_flow_transcripts.csv` columns: `row`, `category`, `question`, `expected_answer`, `final_reply`, `unresolved`, `num_turns`, `transcript`. `unresolved` is true when the turn cap is hit before a reply with no options. `num_turns` counts bot replies. `transcript` joins turns with ` || `.
+
+### Local model run (`local_model_eval/`)
+
+`run_eval.py` imports the chatbot's own Flask app inside its `rammy-python` container and replaces only the model client with an Ollama server, so the PII check, guided flow, Qdrant retrieval and prompts stay the same as production. It resets conversation state before every question, appends one JSON line per question to `results.jsonl`, and can resume an interrupted run (`--retry-errors` re-runs only failed rows).
+
+```bash
+python3 local_model_eval/extract_questions.py path/to/workbook.xlsx local_model_eval/questions.json
+docker cp local_model_eval/. rammy-python:/app/gemma9b_eval
+docker exec rammy-python python /app/gemma9b_eval/run_eval.py --model gemma2:9b --limit 3
+```
+
+Setup used for the Gemma 2 9B run: Ollama 0.34.3 in Docker on the chatbot's network (CPU only, Apple M2, 16 GB RAM), `gemma2:9b` (Q4_0), 8192-token context, seed 42.
 
 ## Limitations
 
