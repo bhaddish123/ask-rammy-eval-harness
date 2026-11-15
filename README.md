@@ -1,114 +1,77 @@
-# Ask Rammy — Evaluation Harness
+# Ask Rammy Evaluation Harness
 
-Automated benchmarking for **Ask Rammy**, West Chester University's HR chatbot: a retrieval-augmented generation (RAG) assistant that answers employee HR questions from WCU and PASSHE policy pages and documents.
+This is an evaluation harness for Ask Rammy, West Chester University's RAG-based HR chatbot. It was built for the CSC402 capstone, where Bereket is Testing & Data Lead. It reads question-and-answer rows from an Excel workbook, sends each question to a running chatbot HTTP API, and records latency, request status, whether a guided flow started, and a word-overlap score against the approved answer.
 
-I built this as **Testing & Data Lead** on a 6-person CSC402 Software Engineering capstone team (Fall 2026).
+It does not host or modify the chatbot. This repository has no chatbot source, retrieval index, model configuration, or Docker setup. The scripts only call an API that is already running. They do not select a model. The chat client stores the `reply` field and does not record token usage or call `/api/analytics`.
 
-> **Attribution:** the original Ask Rammy chatbot was built by a previous capstone team: [GarrettCrowner/CSC402-Project](https://github.com/GarrettCrowner/CSC402-Project). **This repo contains only the testing and benchmarking code.** None of the chatbot's source is included here.
+## Features
 
----
+- Loads a benchmark workbook with `xlsx_reader.py` (standard library only). A test case is a row with both a question and an approved answer. The header row (`Question` / `Approved Answer`) is skipped.
+- `test_benchmark.py` checks `GET /api/health`, then `POST`s each question to `/api/chat` with an empty history.
+- Writes `benchmark_results.csv` and prints a summary: case count, success and failure counts, guided-flow count, direct-answer count, average latency, and average word-overlap on direct answers.
+- Treats a reply containing `[OPTIONS:` as a guided flow. Word overlap is computed only for successful direct answers.
+- `guided_flow_walkthrough.py` replays those guided-flow rows one conversation at a time and writes `guided_flow_transcripts.csv` (transcript, final reply, turn count, whether it hit the turn cap).
+- `inspect_benchmark.py` prints the worksheet row count and the first 15 rows so the column layout can be checked.
 
-## The project
+The benchmark workbook and run outputs are not in this repository. `.gitignore` excludes `*.xlsx`, `*.csv`, and `*.pdf`. No case counts or saved scores are checked in.
 
-The team is upgrading Ask Rammy with WCU HR as the client. Today the chatbot runs a single-model pipeline: retrieve the top 5 matching chunks from Qdrant, then generate an answer with GPT-4.1-mini. The planned replacement is a **dual-model** design: an *orchestrator* that routes and prepares each request, and a *generator* that writes the answer.
+## Tech Stack
 
-Three setups are being compared:
+- Python 3 (scripts use `#!/usr/bin/env python3`)
+- `requests>=2.32.3` (only third-party package; see `requirements.txt`)
+- Standard library: `argparse`, `csv`, `pathlib`, `time`, `zipfile`, `xml.etree`, `re`
 
-1. **Baseline** — the current GPT-4.1-mini pipeline
-2. **Local / Local** — local orchestrator + local generator
-3. **Local / Proprietary** — local orchestrator + GPT-4.1-mini generator
+Both runners call `http://localhost:3000`. That base URL is a constant in the source, not an environment variable. Endpoints used: `GET /api/health`, `POST /api/chat`.
 
-The best-performing setup is intended to go to production, with handoff documentation for HR and IT.
+## Project Structure
 
-**My role:** I own the evaluation that decides which setup ships. I built the HR-validated benchmark, deployed the isolated staging environment the team tests against, and wrote this harness so every setup is measured the same way.
-
----
-
-## System under test
-
+```txt
+.
+├── test_benchmark.py            # run workbook questions against /api/chat; write benchmark_results.csv
+├── guided_flow_walkthrough.py   # replay guided-flow rows as multi-turn chats; write guided_flow_transcripts.csv
+├── xlsx_reader.py               # read sheet1 from an .xlsx file, including the shared-strings table
+├── inspect_benchmark.py         # print the row count and the first 15 rows
+├── requirements.txt             # requests>=2.32.3
+├── .gitignore                   # ignores .env, *.xlsx, *.csv, *.pdf, virtualenvs
+└── README.md
 ```
-benchmark .xlsx ──► this harness ──HTTP──► Node.js gateway (:3000) ──► Flask chatbot
-                                                                  ├─► Qdrant (top-5 retrieval)
-                                                                  └─► OpenAI GPT-4.1-mini
-```
 
-Staging (described in the original project notes, not checked into this repo) was an isolated, HR-only Docker Compose stack: Node.js, Flask, Qdrant, and MinIO, loaded with 613 vectors from 44 HR web sources. All harness runs target staging, never production.
+## Run
 
-The chat API used by the scripts is a single-model OpenAI setup. A per-request model switch for the dual-model comparison is called out in `test_benchmark.py` as future work.
-
----
-
-## What's in this repo
-
-| File | Purpose |
-|---|---|
-| `test_benchmark.py` | Reads Q&A rows from the benchmark workbook, `POST`s each question to `/api/chat` with an empty history, and writes `benchmark_results.csv` (latency, HTTP status, whether a guided/clarifying flow started, a word-overlap accuracy score). Default API: `http://localhost:3000`. |
-| `guided_flow_walkthrough.py` | Replays guided-flow questions as multi-turn conversations. At each `[OPTIONS: A \| B]` prompt it picks the first option so runs are reproducible. Stops after 6 turns and writes transcripts. |
-| `xlsx_reader.py` | Excel reader using only the standard library (`zipfile` + XML), including the shared-strings table. |
-| `inspect_benchmark.py` | Prints the first rows of the spreadsheet so you can check column mappings. |
-| `requirements.txt` | `requests>=2.32.3` |
-
-The default spreadsheet path in `test_benchmark.py` is one directory *above* this repo: `../HR_QA_Benchmark_Template_version2.xlsx`. Columns expected (0-indexed): Category, Question, Approved Answer, Source Document, Priority. A real test case is a row with both a question and an approved answer. The title, instructions, header, and section-divider rows are skipped.
-
-The benchmark spreadsheet and run outputs belong to WCU HR and are **not included**.
-
----
-
-## Baseline results (GPT-4.1-mini, staging)
-
-Recorded in this repo's existing write-up:
-
-| Metric | Result |
-|---|---|
-| Benchmark cases run | 171 |
-| API success rate | 100% (no timeouts or errors) |
-| Avg response latency | ~1.5 s |
-| Direct answers / guided flows | 151 / 20 |
-| Guided flows resolved within 6 turns | 20 / 20 |
-
-The benchmark includes HR-approved answers across topic categories, plus adversarial cases: out-of-scope questions, redirect-to-HR questions, and messages containing personal data (PII).
-
-### Findings from those runs
-
-- **Word-overlap scoring understates accuracy.** Overlap with the approved answer cannot credit a correct paraphrase or a correct refusal. Manual spot-checks across four question types (direct FAQ, guided flow, out-of-scope, PII) behaved correctly but scored as low as 11–19% overlap.
-- **Guided-flow state can leak between conversations** if the chatbot keeps progress in one global object. `guided_flow_walkthrough.py` runs conversations one at a time to work around this.
-- **Four benchmark rows** held placeholder text instead of approved answers and were sent back to HR.
-
----
-
-## Running it
-
-Requires Python 3.9+ and a running staging instance of the chatbot (gateway on `localhost:3000`).
+A chatbot gateway must already be accepting connections at `http://localhost:3000`. No environment variables are read. Install the dependency, then run from this directory:
 
 ```bash
 pip install -r requirements.txt
 
 python3 inspect_benchmark.py path/to/benchmark.xlsx
 python3 test_benchmark.py --benchmark path/to/benchmark.xlsx --limit 10
-python3 test_benchmark.py --benchmark path/to/benchmark.xlsx          # -> benchmark_results.csv
-python3 guided_flow_walkthrough.py                                    # reads benchmark_results.csv
+python3 test_benchmark.py --benchmark path/to/benchmark.xlsx
+python3 guided_flow_walkthrough.py
 ```
 
-`test_benchmark.py` also accepts `--output` for a custom results path. A `/api/health` check runs before the suite.
+`test_benchmark.py` arguments:
 
----
+- `--benchmark` — path to the workbook. Default: `../HR_QA_Benchmark_Template_version2.xlsx` (one directory above this repo). The run exits if the file is missing.
+- `--output` — results CSV. Default: `benchmark_results.csv` in this directory.
+- `--limit` — optional. After parsing, keep only the first N test cases.
 
-## Roadmap
+`inspect_benchmark.py` takes an optional workbook path as its first argument. With no argument it uses the same default path as `test_benchmark.py`. If the file is missing it prints `File not found` and stops.
 
-The next step described in this project is to score seven HR-approved metrics across the three model setups:
+`guided_flow_walkthrough.py` takes no arguments. It reads `benchmark_results.csv` in this directory and writes `guided_flow_transcripts.csv` beside it. The results file has to exist already; rows are selected where `guided_flow` is `True`.
 
-- **Answer accuracy** — pass/fail
-- **Answer quality** — 0–5, LLM judge against a written rubric (replacing word overlap)
-- **Source accuracy** — right source, or a correct redirect to HR
-- **Privacy compliance** — pass/fail on PII cases
-- **Latency**
-- **Cost per query** — from token usage (token counts are not in the `/api/chat` response today; the script notes they are logged server-side / via `/api/analytics`)
-- **Retrieval hit rate** — whether the right source is in Qdrant's top 5, kept separate from source accuracy
+Workbook columns, 0-indexed, as read by `test_benchmark.py`: Category, Question, Approved Answer, Source Document, Priority. The runner keeps category, question, approved answer, and priority. The source-document cell is not written to the CSV. `xlsx_reader.py` reads `xl/worksheets/sheet1.xml` only.
 
-Borderline scores are intended to go to a manual-review list rather than being decided automatically.
+Request details in `test_benchmark.py`:
 
----
+- Health check: `GET /api/health`, 5 second timeout. If the connection fails, the script tells you to run `docker ps` and exits. A non-200 response is printed, and the run still continues.
+- Chat: `POST /api/chat` with JSON `{"message": "<question>", "history": []}`, 30 second timeout.
+- 0.5 seconds between questions.
+- `status` is `success` on HTTP 200, `timeout` after 30 seconds, otherwise `error`.
+- `guided_flow` is true when the reply contains `[OPTIONS:`.
+- Failed requests, empty replies, and guided-flow rows score 0. For a successful direct answer, `word_overlap_score` is the number of distinct lowercase whitespace-separated words shared with the reply, divided by the number of distinct words in the approved answer, capped at 1.0, then rounded to two decimal places.
 
-## Tech
+`benchmark_results.csv` columns: `row`, `category`, `priority`, `question`, `expected_answer`, `actual_reply`, `latency_ms`, `status`, `guided_flow`, `word_overlap_score`, `error`. `row` is the 1-based worksheet row number. `latency_ms` is client-side elapsed time.
 
-Python · requests · Docker Compose · Qdrant · MinIO · OpenAI API · RAG
+`guided_flow_walkthrough.py` sends the same chat payload, appending `user` and `assistant` turns to `history`. When a reply matches `[OPTIONS: A | B | ...]`, it sends the first option as the next message. It stops at 6 bot turns (`MAX_TURNS`). It waits 0.3 seconds after each conversation.
+
+`guided_flow_transcripts.csv` columns: `row`, `category`, `question`, `expected_answer`, `final_reply`, `unresolved`, `num_turns`, `transcript`. `unresolved` is true when the turn cap is hit before a reply with no options. `num_turns` counts bot replies. `transcript` joins turns with ` || `.
